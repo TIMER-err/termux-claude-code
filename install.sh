@@ -21,19 +21,57 @@ CLAUDE_VERSION_MARKER="$CLAUDE_PKG_DIR/.installed-version"
 
 CURL=(curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -C -)
 
-if [ $# -eq 0 ]; then
-    printf '\nAction\n  1. Install\n  2. Uninstall\n\n'
-    read -rp "Choice [1]: " raw_action
-    raw_action="${raw_action:-1}"
-else
-    raw_action="$1"
-fi
+usage() {
+    cat <<'USAGE'
+Install Claude Code on Termux (Android, aarch64).
 
-case "$raw_action" in
-    1|install)   action=install ;;
-    2|uninstall) action=uninstall ;;
-    *) err "Invalid action: $raw_action"; exit 1 ;;
-esac
+Usage:
+  install.sh [action] [options]
+
+Actions:
+  install                Install or update Claude Code (default)
+  uninstall              Remove the wrapper and the unpacked module graph
+
+Options:
+  -r, --release VERSION  Pin a release instead of resolving "latest"
+  -b, --binary PATH      Use an already-downloaded linux-arm64 binary
+  -f, --force            Reinstall even if the installed version matches
+  -h, --help             Show this help and exit
+
+Environment variables (equivalent to the options above):
+  CLAUDE_RELEASE_VERSION   same as --release
+  CLAUDE_LOCAL_BINARY      same as --binary
+  FORCE_INSTALL_CC=1       same as --force
+
+Examples:
+  bash install.sh
+  bash install.sh --release 2.1.25
+  bash install.sh --binary ~/Download/claude
+  bash install.sh uninstall
+USAGE
+}
+
+need_value() {
+    [ "$2" -ge 2 ] || { err "$1 requires a value"; exit 1; }
+}
+
+action=install
+while [ $# -gt 0 ]; do
+    case "$1" in
+        install)   action=install ;;
+        uninstall) action=uninstall ;;
+        -r|--release|--version)
+            need_value "$1" $#; CLAUDE_RELEASE_VERSION="$2"; shift ;;
+        --release=*|--version=*) CLAUDE_RELEASE_VERSION="${1#*=}" ;;
+        -b|--binary)
+            need_value "$1" $#; CLAUDE_LOCAL_BINARY="$2"; shift ;;
+        --binary=*) CLAUDE_LOCAL_BINARY="${1#*=}" ;;
+        -f|--force) FORCE_INSTALL_CC=1 ;;
+        -h|--help)  usage; exit 0 ;;
+        *) err "Unknown argument: $1"; usage >&2; exit 1 ;;
+    esac
+    shift
+done
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT

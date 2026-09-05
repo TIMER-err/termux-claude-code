@@ -1,21 +1,53 @@
 # termux-claude-code
 
+**English** · [简体中文](README.zh-CN.md)
+
 Install [Claude Code](https://claude.com/claude-code) on Termux (Android, aarch64).
 
 ```bash
-bash install.sh install
+curl -fsSL https://raw.githubusercontent.com/TIMER-err/termux-claude-code/main/install.sh | bash
 ```
 
 Then open a new shell and run `claude`.
+
+Or clone it and read it first, which is the better habit for anything piped into
+a shell:
+
+```bash
+git clone https://github.com/TIMER-err/termux-claude-code.git
+bash termux-claude-code/install.sh
+```
 
 ## Why this is needed
 
 Anthropic ships a `linux-arm64` build, but it is a [Bun](https://bun.sh)-packaged
 single-file executable linked against **glibc**. Android uses **bionic** libc, so
-the binary cannot execute under Termux at all.
+the binary cannot execute under Termux at all — not a missing dependency you can
+`pkg install` your way out of, but a different libc ABI. The npm package is no
+escape either: `@anthropic-ai/claude-code` has no dependencies and a
+`postinstall` script that fetches that same platform binary.
 
-This script does not run the binary. It unpacks the JavaScript out of it and runs
-that with Termux's own `bun`.
+The usual workaround is a **proot** distro — `proot-distro install ubuntu`, then
+install Claude Code inside it against real glibc. It runs, but it is painful to
+actually use: **every keystroke takes hundreds of milliseconds to appear.** Typing
+a prompt feels like typing over a bad SSH link.
+
+That is worth being precise about, because the obvious explanation is wrong.
+`proot` is a ptrace-based userspace chroot, so the assumption is that its syscall
+interception taxes everything — but running commands inside the container is
+perfectly acceptable. Tool calls, `rg`, `git`, subprocesses: fine. The latency is
+specific to the binary's own interactive input path.
+
+The evidence is that installing **this** project inside that same proot container
+also fixes it. Same container, same ptrace overhead, responsive typing. So the
+container was never really the problem — the packaged binary was.
+
+This script skips both anyway. It does not run the binary and it does not need a
+container: it unpacks the JavaScript back out of the executable and runs it on
+`bun`. On bare Termux that is an ordinary Android process, your real `$HOME`, and
+a 40 MB install instead of a second Linux rootfs to keep updated on a filesystem
+apart from your own. And if you are already living inside proot, installing it
+there works just as well.
 
 ## How it works
 
@@ -78,19 +110,29 @@ Installed automatically via `pkg` if missing:
 Roughly 250 MB of free space during install (205 MB download, ~128 MB section,
 40 MB final). The installed tree is **40 MB**.
 
-## Environment variables
+## Options
 
-| Variable | Purpose |
-| --- | --- |
-| `CLAUDE_RELEASE_VERSION` | Pin a version instead of resolving `latest`. |
-| `CLAUDE_LOCAL_BINARY` | Use an already-downloaded binary instead of fetching it. |
-| `FORCE_INSTALL_CC=1` | Reinstall even when the version marker already matches. |
+`bash install.sh [install|uninstall] [options]` — `install` is the default.
+
+| Option | Environment variable | Purpose |
+| --- | --- | --- |
+| `-r, --release VERSION` | `CLAUDE_RELEASE_VERSION` | Pin a release instead of resolving `latest`. |
+| `-b, --binary PATH` | `CLAUDE_LOCAL_BINARY` | Use an already-downloaded binary instead of fetching one. |
+| `-f, --force` | `FORCE_INSTALL_CC=1` | Reinstall even when the version marker already matches. |
+| `-h, --help` | — | Print the same list and exit. |
+
+To pass options through the curl one-liner, use `bash -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TIMER-err/termux-claude-code/main/install.sh \
+  | bash -s -- --force
+```
 
 The 205 MB download is the slowest and most failure-prone step. If it drops
 partway, `curl -C -` resumes on retry; or fetch it yourself and pass the path:
 
 ```bash
-CLAUDE_LOCAL_BINARY=~/Download/claude bash install.sh install
+bash install.sh --binary ~/Download/claude
 ```
 
 ## Uninstall
